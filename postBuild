@@ -23,9 +23,6 @@ pip install jupyter_innotater
 apt-get install unzip
 
 mkdir pre-trained-model
-cd ./pre-trained-model
-wget --no-check-certificate https://ndownloader.figshare.com/files/26260501
-cd ..
 mkdir training
 mkdir exported-model
 mkdir annotations
