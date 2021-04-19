@@ -1,4 +1,5 @@
-mkdir Tensorflow && cd $_
+mkdir Tensorflow 
+cd Tensorflow
 git clone https://github.com/tensorflow/models.git
 cd ~
 apt-get install protobuf-compiler --yes --no-install-recommends
