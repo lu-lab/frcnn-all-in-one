@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 pip install --ignore-installed --upgrade tensorflow==2.2.0
 
 mkdir Tensorflow
