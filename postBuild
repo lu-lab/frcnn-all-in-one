@@ -1,8 +1,22 @@
 #!/bin/bash
+pip install --ignore-installed --upgrade tensorflow==2.2.0
 
-apt-get install protobuf-compiler
+mkdir Tensorflow
+cd Tensorflow
 git clone https://github.com/tensorflow/models.git
+cd ..
+apt-get install protobuf-compiler
 protoc object_detection/protos/*.proto --python_out=.
+
+git clone https://github.com/cocodataset/cocoapi.git
+cd cocoapi/PythonAPI
+make
+cp -r pycocotools /TensorFlow/models/research/
+
+cd Tensorflow/models/research/
+cp object_detection/packages/tf2/setup.py .
+python -m pip install 
+cd ..
 
 pip install jupyter_innotater
 apt-get install unzip
