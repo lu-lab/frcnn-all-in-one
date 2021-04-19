@@ -1,22 +1,21 @@
-mkdir Tensorflow
-cd Tensorflow
+mkdir Tensorflow && cd $_
 git clone https://github.com/tensorflow/models.git
-cd /
+cd ~
 apt-get install protobuf-compiler --yes --no-install-recommends
 cd Tensorflow/models/research/
 protoc object_detection/protos/*.proto --python_out=.
-cd /
+cd ~
 
 git clone https://github.com/cocodataset/cocoapi.git
 cd cocoapi/PythonAPI
 make
 cp -r pycocotools /TensorFlow/models/research/
-cd /
+cd ~
 
 cd Tensorflow/models/research/
 cp object_detection/packages/tf2/setup.py .
 python -m pip install .
-cd /
+cd ~
 
 pip install jupyter_innotater
 apt-get install unzip --yes --no-install-recommends
