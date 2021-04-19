@@ -1,25 +1,25 @@
+workdir="$PWD"
 mkdir Tensorflow 
 cd Tensorflow
 git clone https://github.com/tensorflow/models.git
-cd ~
-apt-get install protobuf-compiler --yes --no-install-recommends
+cd $workdir
+apt-get install protobuf-compiler --yes 
 cd Tensorflow/models/research/
 protoc object_detection/protos/*.proto --python_out=.
-cd ~
+cd $workdir
 
 git clone https://github.com/cocodataset/cocoapi.git
 cd cocoapi/PythonAPI
 make
 cp -r pycocotools /TensorFlow/models/research/
-cd ~
+cd $workdir
 
 cd Tensorflow/models/research/
 cp object_detection/packages/tf2/setup.py .
 python -m pip install .
-cd ~
+cd $workdir
 
-pip install jupyter_innotater
-apt-get install unzip --yes --no-install-recommends
+apt-get install unzip --yes
 
 mkdir pre-trained-model
 mkdir training
