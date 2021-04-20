@@ -1,27 +1,4 @@
-workdir="$PWD"
-mkdir Tensorflow 
-cd Tensorflow
-git clone https://github.com/tensorflow/models.git
-cd $workdir
-apt-get install protobuf-compiler --yes 
-cd Tensorflow/models/research/
-protoc object_detection/protos/*.proto --python_out=.
-cd $workdir
-
-git clone https://github.com/cocodataset/cocoapi.git
-cd cocoapi/PythonAPI
-make
-cp -r pycocotools /TensorFlow/models/research/
-cd $workdir
-
-cd Tensorflow/models/research/
-cp object_detection/packages/tf2/setup.py .
-python -m pip install .
-cd $workdir
-
-apt-get install unzip --yes
-
-mkdir pre-trained-model
-mkdir training
-mkdir exported-model
-mkdir annotations
+jupyter contrib nbextension install --user
+jupyter nbextension enable --py widgetsnbextension
+jupyter labextension install @jupyter-widgets/jupyterlab-manager jupyter-innotater
+jupyter labextension install js
