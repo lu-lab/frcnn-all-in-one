@@ -1,4 +1,16 @@
 jupyter contrib nbextension install --user
 jupyter nbextension enable --py widgetsnbextension
+
+git clone https://github.com/ideonate/jupyter-innotater
+cd jupyter-innotater/jupyter-innotater/js
+npm install
+npm run build
+
+cd ..
+pip install -e .
+
+jupyter nbextension install --py --symlink --sys-prefix jupyter_innotater
+jupyter nbextension enable --py --sys-prefix jupyter_innotater
+
 jupyter labextension install @jupyter-widgets/jupyterlab-manager jupyter-innotater
 jupyter labextension install js
