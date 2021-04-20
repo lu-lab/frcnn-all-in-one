@@ -6,5 +6,5 @@ opencv-python-headless==4.4.0.44
 pandas==0.25.3
 nodejs
 ipywidgets
-jupyter_innotator
+jupyter-innotator
 jupyter_contrib_nbextensions
