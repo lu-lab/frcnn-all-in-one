@@ -4,6 +4,8 @@ This set of notebooks serves as documentation and tutorial for preparing data an
 
 There are two notebooks to work through in order to train a Faster R-CNN with your own custom classes. First, you will need to annotate images and save the annotation data by working through the Faster R-CNN annotation notebook. Second, you'll use those annotations to train the model using the Google colab notebook in the 'colab' folder in this repo.
 
+If you're here to try out one of our models trained to detect worms or eggs, jump to the notebook at the bottom!
+
 ### Annotate your data
 Click this binder badge to run the annotation notebook from your browser and follow the directions in Faster-RCNN-annotation.ipynb: 
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/lu-lab/frcnn-all-in-one/HEAD)
@@ -14,5 +16,8 @@ Note that the binder service may take several minutes to start. Once it starts, 
 Once you have your annotations, train the model in Google Colab (this way you will have access to a GPU which will significantly shorten training time).
 Click this colab badge to view the Faster R-CNN training notebook: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lu-lab/frcnn-all-in-one/blob/main/colab/Faster_R_CNN_training.ipynb)
 However, instead of running this notebook directly, copy it to your own Google Drive by choosing File→Save a copy in Drive. Once you've saved this in your own Google Drive, the first cell you run will automatically clone this repo and keep just the files within the colab folder that you will need to follow the training notebook.
+
+### Test your data with one of our pre-trained models
+Work in progress
 
 This notebook is associated with our [preprint](https://www.biorxiv.org/content/10.1101/2021.02.08.430359v1). 
