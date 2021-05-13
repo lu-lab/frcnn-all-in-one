@@ -7,8 +7,6 @@ from os.path import join, exists
 import cv2
 import h5py
 import numpy as np
-from object_detection.utils import label_map_util
-from object_detection.utils import visualization_utils as vis_util
 
 
 class CNN:
