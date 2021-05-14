@@ -1,6 +1,6 @@
-# custom faster r-cnn in your browser
+# Custom faster r-cnn in your browser
 ---
-This set of notebooks serves as documentation and tutorial for preparing data and training a Faster R-CNN inception v2 object detection model entirely in web-based notebooks. This means you don't have to install everything to your own computer to prep your data and train a deep learning model, it's all automatically installed in the notebooks contained in this repository! It will also work regardless of your computer's operating system (Mac/Windows/Linux).
+This set of notebooks serves as documentation and tutorial for preparing data and training a Faster R-CNN inception v2 object detection model entirely in web-based notebooks. This means you don't have to install everything to your own computer to prep your data and train a deep learning model, it's all automatically installed in the notebooks contained in this repository! It will also work regardless of your computer's operating system (Mac/Windows/Linux). The demo in the notebooks trains a Faster R-CNN model but we also include directions for how to train other types of object detection models in the training notebook. 
 
 There are two notebooks to work through in order to train a Faster R-CNN with your own custom classes. First, you will need to annotate images and save the annotation data by working through the Faster R-CNN annotation notebook. Second, you'll use those annotations to train the model using the Google colab notebook in the 'colab' folder in this repo.
 
@@ -18,6 +18,6 @@ Click this colab badge to view the Faster R-CNN training notebook: [![Open In Co
 However, instead of running this notebook directly, copy it to your own Google Drive by choosing File→Save a copy in Drive. Once you've saved this in your own Google Drive, the first cell you run will automatically clone this repo and keep just the files within the colab folder that you will need to follow the training notebook.
 
 ### Test your data with one of our pre-trained models
-Work in progress
+If you're looking to test how well our model works with your own data, this Google Colab notebook [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lu-lab/frcnn-all-in-one/blob/main/colab/Faster_R_CNN_inferencing.ipynb) will allow you to quickly test our models in your browser. You can use this notebook to inference with models built with either Tensorflow 1 or Tensorflow 2. 
 
-This notebook is associated with our [preprint](https://www.biorxiv.org/content/10.1101/2021.02.08.430359v1). 
+This repository is associated with our [preprint](https://www.biorxiv.org/content/10.1101/2021.02.08.430359v1). 
