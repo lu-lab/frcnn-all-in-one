@@ -8,6 +8,8 @@ import cv2
 import h5py
 import numpy as np
 
+from object_detection.utils import label_map_util
+
 
 class CNN:
     ''' The CNN class loads a frozen tensorflow inference graph for object detection. The internal '_run' method runs
