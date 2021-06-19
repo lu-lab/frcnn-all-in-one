@@ -7,8 +7,13 @@ from os.path import join, exists
 import cv2
 import h5py
 import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
 
 from object_detection.utils import label_map_util
+from object_detection.utils import config_util
+from object_detection.utils import visualization_utils as viz_utils
+from object_detection.builders import model_builder
 
 
 class CNN:
@@ -18,7 +23,6 @@ class CNN:
      and worm boxes, use 'get_eggs_and_worms'.'''
 
     def __init__(self, graph_path, labelmap_path, save_processed_images, h5_file):
-        self.tf = importlib.import_module('tensorflow')
         self.box_file_lock = threading.Lock()
         self.graph_path = graph_path
         self.labelmap_path = labelmap_path
@@ -62,7 +66,7 @@ class CNN:
         return image
 
     def _screen_results(self, target_class, min_score, classes, boxes, scores):
-        # screen out classes that are not 1 (worm class) and scores > .8
+        # screen out classes that are not target class and scores less than the minimum score
         idx = (classes == target_class) & (scores >= min_score)
         boxes = boxes[idx]
         scores = scores[idx]
@@ -71,184 +75,47 @@ class CNN:
 
         return num_results, classes, boxes, scores
 
-    def get_worm_location(self, image, frame_no):
-        # default to no center x or y position
-        worm_center_x = None
-        worm_center_y = None
-        image = self._prep_image(image)
-        print(frame_no)
-        # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-        expanded_image = np.expand_dims(image, axis=0)
-        try:
-            classes, boxes, scores = self._run(expanded_image)
-            target_class = 1
-            min_score = 0.8
-            num_worms, worm_classes, worm_boxes, worm_scores = self._screen_results(target_class, min_score,
-                                                                                    classes, boxes, scores)
-            worm_class, worm_box, worm_score = self._get_top_result(num_worms, worm_classes, worm_boxes, worm_scores)
+    def make_hdf(self):
+        with h5py.File(self.h5_file, 'w') as hf:
+            for k, v, in self.label_map_dict.items():
+                hf.create_dataset('label_'+ str(v), data=k)
 
-            if self.save_processed_images:
-                if worm_box is not None:
-                    with self.box_file_lock:
-                        if exists(self.h5_file):
-                            with h5py.File(self.h5_file, 'a') as hf:
-                                frame_boxes_name = 'worm_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=worm_boxes)
-                                frame_scores_name = 'worm_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=worm_scores)
-                        else:
-                            with h5py.File(self.h5_file, 'w') as hf:
-                                frame_boxes_name = 'worm_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=worm_boxes)
-                                frame_scores_name = 'worm_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=worm_scores)
-
-            if worm_box is not None:
-                worm_center_x, worm_center_y = self._get_box_center(worm_box)
-
-        except self.tf.compat.v1.errors.ResourceExhaustedError:
-            # just return the center point as None, None
-            pass
-
-        return worm_box, worm_center_x, worm_center_y
-
-    def get_eggs_and_worms(self, image, frame_no):
-        worm_center_x, worm_center_y = (None, None)
-        num_eggs = None
+    def get_detections(self, image, frame_no, target_classes, target_min_scores):
+        classes = {}
+        boxes = {}
+        scores = {}
+        num_detections = {}
         image = self._prep_image(image)
         expanded_image = np.expand_dims(image, axis=0)
         try:
-            classes, boxes, scores = self._run(expanded_image)
+            unfiltered_classes, unfiltered_boxes, unfiltered_scores = self._run(expanded_image)
 
-            target_class = 2
-            min_score = 0.1
-            num_eggs, egg_classes, egg_boxes, egg_scores = self._screen_results(target_class, min_score, classes, boxes,
-                                                                                scores)
-            target_class = 1
-            min_score = 0.8
-            num_worms, worm_classes, worm_boxes, worm_scores = self._screen_results(target_class, min_score,
-                                                                                    classes, boxes, scores)
-            if self.save_processed_images:
-                with self.box_file_lock:
-                    if exists(self.h5_file):
-                        with h5py.File(self.h5_file, 'a') as hf:
-                            if egg_boxes is not None:
-                                frame_boxes_name = 'egg_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=egg_boxes)
-                                frame_scores_name = 'egg_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=egg_scores)
-                            if worm_boxes is not None:
-                                frame_boxes_name = 'worm_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=worm_boxes)
-                                frame_scores_name = 'worm_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=worm_scores)
-                    else:
-                        with h5py.File(self.h5_file, 'w') as hf:
-                            if egg_boxes is not None:
-                                frame_boxes_name = 'egg_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=egg_boxes)
-                                frame_scores_name = 'egg_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=egg_scores)
-                            if worm_boxes is not None:
-                                frame_boxes_name = 'worm_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=worm_boxes)
-                                frame_scores_name = 'worm_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=worm_scores)
+            for target_class, target_min_score in zip(target_classes, target_min_scores):
 
-        except self.tf.compat.v1.errors.ResourceExhaustedError:
-            # just return the center point as None, None and the number of eggs as None
-            pass
-
-        return worm_boxes, egg_boxes
-
-    def count_eggs(self, image, frame_no):
-        num_eggs = None
-        # default to no center x or y positions
-        image = self._prep_image(image)
-        # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-        expanded_image = np.expand_dims(image, axis=0)
-        try:
-
-            classes, boxes, scores = self._run(expanded_image)
-            target_class = 2
-            min_score = 0.8
-            num_eggs, egg_classes, egg_boxes, egg_scores = self._screen_results(target_class, min_score, classes, boxes,
-                                                                                scores)
-            if self.save_processed_images:
-                if egg_boxes is not None:
-                    with self.box_file_lock:
-                        if exists(self.h5_file):
-                            with h5py.File(self.h5_file, 'a') as hf:
-                                frame_boxes_name = 'egg_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=egg_boxes)
-                                frame_scores_name = 'egg_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=egg_scores)
-                        else:
-                            with h5py.File(self.h5_file, 'w') as hf:
-                                frame_boxes_name = 'egg_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=egg_boxes)
-                                frame_scores_name = 'egg_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=egg_scores)
-
-        except self.tf.compat.v1.errors.ResourceExhaustedError:
-            # just return the number of eggs as None
-            pass
-
-        return num_eggs
-
-    def get_worm_location_and_count_eggs(self, image, frame_no):
-        worm_center_x, worm_center_y = (None, None)
-        num_eggs = None
-        image = self._prep_image(image)
-        expanded_image = np.expand_dims(image, axis=0)
-        try:
-            classes, boxes, scores = self._run(expanded_image)
-
-            target_class = 2
-            min_score = 0.8
-            num_eggs, egg_classes, egg_boxes, egg_scores = self._screen_results(target_class, min_score, classes, boxes,
-                                                                                scores)
-            target_class = 1
-            min_score = 0.8
-            num_worms, worm_classes, worm_boxes, worm_scores = self._screen_results(target_class, min_score,
-                                                                                    classes, boxes, scores)
-            worm_class, worm_box, worm_score = self._get_top_result(num_worms, worm_classes, worm_boxes, worm_scores)
-
-            if worm_box is not None:
-                worm_center_x, worm_center_y = self._get_box_center(worm_box)
+                num_detections[target_class], classes[target_class], boxes[target_class], scores[target_class] = \
+                    self._screen_results(target_class,
+                                         target_min_score,
+                                         unfiltered_classes,
+                                         unfiltered_boxes,
+                                         unfiltered_scores)
 
             if self.save_processed_images:
                 with self.box_file_lock:
                     if exists(self.h5_file):
                         with h5py.File(self.h5_file, 'a') as hf:
-                            if egg_boxes is not None:
-                                frame_boxes_name = 'egg_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=egg_boxes)
-                                frame_scores_name = 'egg_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=egg_scores)
-                            if worm_box is not None:
-                                frame_boxes_name = 'worm_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=worm_boxes)
-                                frame_scores_name = 'worm_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=worm_scores)
-                    else:
-                        with h5py.File(self.h5_file, 'w') as hf:
-                            if egg_boxes is not None:
-                                frame_boxes_name = 'egg_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=egg_boxes)
-                                frame_scores_name = 'egg_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=egg_scores)
-                            if worm_box is not None:
-                                frame_boxes_name = 'worm_boxes_frame_' + str(frame_no)
-                                hf.create_dataset(frame_boxes_name, data=worm_boxes)
-                                frame_scores_name = 'worm_score_frame_' + str(frame_no)
-                                hf.create_dataset(frame_scores_name, data=worm_scores)
+                            for target_class in target_classes:
+                                if num_detections[target_class] > 0:
+                                    name = self.category_index[target_class+1]['name']
+                                    frame_boxes_name = name + '_boxes_frame_' + str(frame_no)
+                                    hf.create_dataset(frame_boxes_name, data=boxes[target_class])
+                                    frame_scores_name = name + '_score_frame_' + str(frame_no)
+                                    hf.create_dataset(frame_scores_name, data=scores[target_class])
 
-        except self.tf.compat.v1.errors.ResourceExhaustedError:
+        except tf.compat.v1.errors.ResourceExhaustedError:
             # just return the center point as None, None and the number of eggs as None
             pass
 
-        return num_eggs, worm_center_x, worm_center_y
+        return boxes
 
 
 class CNN_tf1(CNN):
@@ -258,28 +125,30 @@ class CNN_tf1(CNN):
 
     def __init__(self, graph_path, labelmap_path, save_processed_images, h5_file):
         super().__init__(graph_path, labelmap_path, save_processed_images, h5_file)
-        self.graph, self.sess, self.category_index = self.load_graph()
+        self.graph, self.sess, self.category_index, self.label_map_dict = self.load_graph()
+        self.make_hdf()
         logging.info('CNN: tensorflow 1 model loaded')
 
     def load_graph(self):
-        detection_graph = self.tf.Graph()
+        detection_graph = tf.Graph()
         with detection_graph.as_default():
-            od_graph_def = self.tf.compat.v1.GraphDef()
-            with self.tf.io.gfile.GFile(self.graph_path, 'rb') as fid:
+            od_graph_def = tf.compat.v1.GraphDef()
+            with tf.io.gfile.GFile(self.graph_path, 'rb') as fid:
                 serialized_graph = fid.read()
                 od_graph_def.ParseFromString(serialized_graph)
-                self.tf.import_graph_def(od_graph_def, name='')
+                tf.import_graph_def(od_graph_def, name='')
 
         # Load label map
         label_map = label_map_util.load_labelmap(self.labelmap_path)
         categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=2,
                                                                     use_display_name=True)
         category_index = label_map_util.create_category_index(categories)
+        label_map_dict = label_map_util.get_label_map_dict(self.labelmap_path)
 
         # create a session
-        sess = self.tf.compat.v1.Session(graph=detection_graph)
+        sess = tf.compat.v1.Session(graph=detection_graph)
 
-        return detection_graph, sess, category_index
+        return detection_graph, sess, category_index, label_map_dict
 
     def _run(self, expanded_image):
         with self.graph.as_default():
@@ -318,24 +187,45 @@ class CNN_tf1(CNN):
 
 class CNN_tf2(CNN):
 
-    def __init__(self, graph_path, labelmap_path, save_processed_images, h5_file):
+    def __init__(self, graph_path, labelmap_path, save_processed_images, h5_file, config_path):
         super().__init__(graph_path, labelmap_path, save_processed_images, h5_file)
-        self.graph, self.category_index = self.load_graph()
+        self.config_path = config_path
+        # Enable GPU dynamic memory allocation
+        gpus = tf.config.experimental.list_physical_devices('GPU')
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        self.detection_model, self.category_index, self.label_map_dict = self.load_graph()
+        self.make_hdf()
         logging.info('CNN: tensorflow 2 model loaded')
 
     def load_graph(self):
-        graph = self.tf.saved_model.load(self.graph_path)
+        configs = config_util.get_configs_from_pipeline_file(self.config_path)
+        model_config = configs['model']
+        detection_model = model_builder.build(model_config=model_config, is_training=False)
+        # Restore checkpoint
+        ckpt = tf.compat.v2.train.Checkpoint(model=detection_model)
+        ckpt.restore(os.path.join(self.graph_path, 'ckpt-0')).expect_partial()
         category_index = label_map_util.create_category_index_from_labelmap(self.labelmap_path,
                                                                             use_display_name=True)
-        return graph, category_index
+        label_map_dict = label_map_util.get_label_map_dict(self.labelmap_path)
+
+        return detection_model, category_index, label_map_dict
+
+    @tf.function
+    def detect_fn(self, image):
+        image, shapes = self.detection_model.preprocess(image)
+        prediction_dict = self.detection_model.predict(image, shapes)
+        detections = self.detection_model.postprocess(prediction_dict, shapes)
+
+        return detections
 
     def _run(self, expanded_image):
-        input_tensor = self.tf.convert_to_tensor(expanded_image)
-        detections = self.graph(input_tensor)
+        input_tensor = tf.convert_to_tensor(expanded_image, dtype=tf.float32)
+        detections = self.detect_fn(input_tensor)
         num_detections = int(detections.pop('num_detections'))
         detections = {key: value[0, :num_detections].numpy()
                       for key, value in detections.items()}
-        return detections['detection_classes'], detections['detection_boxes'], detections['detection_scores']
+        return detections['detection_classes'].astype(np.int64), detections['detection_boxes'], detections['detection_scores']
 
 
 def top_worm_nn_and_unprocessed_from_h5(h5_file, unprocessed_dir, processed_dir):
@@ -372,8 +262,8 @@ def top_worm_nn_and_unprocessed_from_h5(h5_file, unprocessed_dir, processed_dir)
             continue
 
             
-def label_all_detections_from_h5(h5_file, source_data, save):
-    ''' Label all detections of class 1 (worms) or class 2 (eggs) in a folder of .jpg images, a list of .jpg images, or a movie.
+def label_all_detections_from_h5(h5_file, source_data, save, target_classes):
+    ''' Label all detections for classes in list target_classes in a folder of .jpg images, a list of .jpg images, or a movie.
     If the sources are images, save the labeled images out as images in directory 'save', if the source is a movie, save the labeled images out as movie 'save'.'''
 
     ext_list = ['.jpg', '.png', '.tiff']
@@ -384,7 +274,7 @@ def label_all_detections_from_h5(h5_file, source_data, save):
             for f in source_data:
                 key = os.path.basename(f)
                 image = cv2.imread(f, 1)
-                xmins, ymins, xmaxs, ymaxs, ids, _ = get_boxes_from_h5(key, hf)
+                xmins, ymins, xmaxs, ymaxs, ids, _ = get_boxes_from_h5(key, hf, target_classes)
                 image = label_images(xmaxs, ymaxs, xmins, ymins, ids, image)
                 cv2.imwrite(os.path.join(save, key), image)
         elif os.path.isdir(source_data):
@@ -393,7 +283,7 @@ def label_all_detections_from_h5(h5_file, source_data, save):
             for f in unprocessed_img_files:
                 key = os.path.basename(f)
                 image = cv2.imread(os.path.join(source_data, f), 1)
-                xmins, ymins, xmaxs, ymaxs, ids, _ = get_boxes_from_h5(key, hf)
+                xmins, ymins, xmaxs, ymaxs, ids, _ = get_boxes_from_h5(key, hf, target_classes)
                 image = label_images(xmaxs, ymaxs, xmins, ymins, ids, image)
                 cv2.imwrite(os.path.join(save, f), image)
 
@@ -409,7 +299,7 @@ def label_all_detections_from_h5(h5_file, source_data, save):
             while vid.isOpened():
                 ret, image = vid.read()
                 if ret:
-                    xmins, ymins, xmaxs, ymaxs, ids, _ = get_boxes_from_h5(idx, hf)
+                    xmins, ymins, xmaxs, ymaxs, ids, _ = get_boxes_from_h5(idx, hf, target_classes)
                     image = label_images(xmaxs, ymaxs, xmins, ymins, ids, image)
                     out1.write(image)
                 else:
@@ -420,59 +310,48 @@ def label_all_detections_from_h5(h5_file, source_data, save):
 
 def label_images(xmaxs, ymaxs, xmins, ymins, ids, image):
     height, width, d = image.shape
+    cmap = plt.get_cmap('tab10')
+
     for i, id in enumerate(ids):
-        if id == 1 and xmins[i]:  # worm
-            cv2.rectangle(image, (int(xmins[i] * width), int(ymins[i] * height)),
-                                  (int(xmaxs[i] * width), int(ymaxs[i] * height)),
-                                  (25, 1, 190), 5)
-        if id == 2 and xmins[i]:  # egg
-            cv2.rectangle(image, (int(xmins[i] * width), int(ymins[i] * height)),
-                                  (int(xmaxs[i] * width), int(ymaxs[i] * height)),
-                                  (205, 133, 74), 5)
+        rgba = cmap(((id-1) % 10)/10)
+        bgr = (int(rgba[2]*255), int(rgba[1]*255), int(rgba[0]*255))
+        cv2.rectangle(image, 
+                      (int(xmins[i] * width), int(ymins[i] * height)),
+                      (int(xmaxs[i] * width), int(ymaxs[i] * height)),
+                      bgr,
+                      5)
+
     return image
 
 
-def get_boxes_from_h5(idx, hf):
+def get_boxes_from_h5(idx, hf, target_classes):
+    ids = []
+    ymins = []
+    ymaxs = []
+    xmins = []
+    xmaxs = []
+    scores = []
+    for t_class in target_classes:
+        # get the name of the class
+        t_name = hf['label_' + str(t_class + 1)][()].decode("utf-8")
         # get the boxes from hdf file
-        worm_frame_boxes_name = 'worm_boxes_frame_' + str(idx)
-        worm_score_boxes_name = 'worm_score_frame_' + str(idx)
-        egg_frame_boxes_name = 'egg_boxes_frame_' + str(idx)
-        egg_score_boxes_name = 'egg_score_frame_' + str(idx)
-        ids = []
-        ymins = []
-        ymaxs = []
-        xmins = []
-        xmaxs = []
-        scores = []
+        frame_boxes_name = t_name + '_boxes_frame_' + str(idx)
+        score_boxes_name = t_name + '_score_frame_' + str(idx)
+
         try:
-            worm_boxes = hf[worm_frame_boxes_name][()]
-            worm_scores = hf[worm_score_boxes_name][()]
-            r, c = worm_boxes.shape
+            i_boxes = hf[frame_boxes_name][()]
+            i_scores = hf[score_boxes_name][()]
+            r, c = i_boxes.shape
             for box in range(0, r):
-                ymin, xmin, ymax, xmax = worm_boxes[box]
+                ymin, xmin, ymax, xmax = i_boxes[box]
                 ymins.append(ymin)
                 xmins.append(xmin)
                 ymaxs.append(ymax)
                 xmaxs.append(xmax)
-                scores.append(worm_scores[box])
-            ids.extend(r*[1])
+                scores.append(i_scores[box])
+            ids.extend(r*[t_class+1])
         except:
-            print('Worms in frame %s not found' % idx)
-
-        try:
-            egg_boxes = hf[egg_frame_boxes_name][()]
-            egg_scores = hf[egg_score_boxes_name][()]
-            r, c = egg_boxes.shape
-            for box in range(0, r):
-                egg_ymin, egg_xmin, egg_ymax, egg_xmax = egg_boxes[box]
-                ymins.append(egg_ymin)
-                xmins.append(egg_xmin)
-                ymaxs.append(egg_ymax)
-                xmaxs.append(egg_xmax)
-                scores.append(egg_scores[box])
-            ids.extend(r*[2])
-        except:
-            print('Eggs in frame %s not found' % idx)
+            print('%s in frame %s not found' % (t_name, idx))
 
         return xmins, ymins, xmaxs, ymaxs, ids, scores
 
