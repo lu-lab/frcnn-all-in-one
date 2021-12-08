@@ -67,7 +67,7 @@ class CNN:
 
     def _screen_results(self, target_class, min_score, classes, boxes, scores):
         # screen out classes that are not target class and scores less than the minimum score
-        idx = (classes == target_class) & (scores >= min_score)
+        idx = (classes == target_class + 1) & (scores >= min_score)
         boxes = boxes[idx]
         scores = scores[idx]
         classes = classes[idx]
@@ -86,9 +86,8 @@ class CNN:
         scores = {}
         num_detections = {}
         image = self._prep_image(image)
-        expanded_image = np.expand_dims(image, axis=0)
         try:
-            unfiltered_classes, unfiltered_boxes, unfiltered_scores = self._run(expanded_image)
+            unfiltered_classes, unfiltered_boxes, unfiltered_scores = self._run(image)
 
             for target_class, target_min_score in zip(target_classes, target_min_scores):
 
@@ -115,28 +114,23 @@ class CNN:
             # just return the center point as None, None and the number of eggs as None
             pass
 
-        return boxes
+        return boxes, unfiltered_classes, unfiltered_boxes, unfiltered_scores
 
 
 class CNN_tf1(CNN):
-    ''' The CNN class loads a frozen tensorflow inference graph for object detection. The internal '_run' method runs
+    ''' The CNN class loads a saved TF1 model for object detection. The internal '_run' method runs
     the actual detection, while the outward facing 'get_worm_location' method will specifically find the center of the
-     bounding-box for the highest-scoring worm object (class 1 in the provided frozen inference graph). '''
+     bounding-box for the highest-scoring worm object (class 1 in the saved model). '''
 
     def __init__(self, graph_path, labelmap_path, save_processed_images, h5_file):
         super().__init__(graph_path, labelmap_path, save_processed_images, h5_file)
-        self.graph, self.sess, self.category_index, self.label_map_dict = self.load_graph()
+        self.detect_fn, self.category_index, self.label_map_dict = self.load_graph()
         self.make_hdf()
         logging.info('CNN: tensorflow 1 model loaded')
 
     def load_graph(self):
-        detection_graph = tf.Graph()
-        with detection_graph.as_default():
-            od_graph_def = tf.compat.v1.GraphDef()
-            with tf.io.gfile.GFile(self.graph_path, 'rb') as fid:
-                serialized_graph = fid.read()
-                od_graph_def.ParseFromString(serialized_graph)
-                tf.import_graph_def(od_graph_def, name='')
+        model = tf.saved_model.load(self.graph_path)
+        detect_fn = model.signatures['serving_default']
 
         # Load label map
         label_map = label_map_util.load_labelmap(self.labelmap_path)
@@ -145,28 +139,19 @@ class CNN_tf1(CNN):
         category_index = label_map_util.create_category_index(categories)
         label_map_dict = label_map_util.get_label_map_dict(self.labelmap_path)
 
-        # create a session
-        sess = tf.compat.v1.Session(graph=detection_graph)
+        return detect_fn, category_index, label_map_dict
 
-        return detection_graph, sess, category_index, label_map_dict
+    def _run(self, image):
+        input_tensor = tf.convert_to_tensor(image)
+        input_tensor = input_tensor[tf.newaxis, ...]
 
-    def _run(self, expanded_image):
-        with self.graph.as_default():
-            image_tensor = self.graph.get_tensor_by_name('image_tensor:0')
-            boxes = self.graph.get_tensor_by_name('detection_boxes:0')
-            scores = self.graph.get_tensor_by_name('detection_scores:0')
-            classes = self.graph.get_tensor_by_name('detection_classes:0')
-            num_detections = self.graph.get_tensor_by_name('num_detections:0')
+        detections = self.detect_fn(input_tensor)
+        detections['detection_classes'] = detections['detection_classes:0'][0]
+        classes = tf.cast(detections['detection_classes'], tf.int64)
+        boxes = detections['detection_boxes:0'][0].numpy()
+        scores = detections['detection_scores:0'][0].numpy()
 
-            # Actual detection.
-            (boxes, scores, classes, num_detections) = self.sess.run(
-                [boxes, scores, classes, num_detections],
-                feed_dict={image_tensor: expanded_image})
-
-            classes = np.squeeze(classes).astype(np.int32)
-            boxes = np.squeeze(boxes)
-            scores = np.squeeze(scores)
-            return classes, boxes, scores
+        return classes, boxes, scores
 
     def _label_image(self, image, box, score, class_idx=1):
         ymin, xmin, ymax, xmax = box
@@ -219,7 +204,8 @@ class CNN_tf2(CNN):
 
         return detections
 
-    def _run(self, expanded_image):
+    def _run(self, image):
+        expanded_image = np.expand_dims(image, axis=0)
         input_tensor = tf.convert_to_tensor(expanded_image, dtype=tf.float32)
         detections = self.detect_fn(input_tensor)
         num_detections = int(detections.pop('num_detections'))
