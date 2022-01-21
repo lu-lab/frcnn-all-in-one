@@ -67,7 +67,7 @@ class CNN:
 
     def _screen_results(self, target_class, min_score, classes, boxes, scores):
         # screen out classes that are not target class and scores less than the minimum score
-        idx = (classes == target_class + 1) & (scores >= min_score)
+        idx = (classes == target_class) & (scores >= min_score)
         boxes = boxes[idx]
         scores = scores[idx]
         classes = classes[idx]
